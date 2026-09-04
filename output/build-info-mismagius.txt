@@ -1,0 +1,4 @@
+source_sha1=d7037c83e1ae5b39bde3c30787637ba1d4c48ce2
+target_sha1=ff9a2410f73e89e3abdd1710d76510f8fcc9dba2
+target_sha256=f6e70cc935a9d8aad3e339765cada320ae5b2b55f6976c740b6be11438c0322f
+target_size=1048576
