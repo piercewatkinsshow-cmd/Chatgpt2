@@ -43,6 +43,26 @@ jobs:
           git clone --depth=1 https://github.com/UnderscorePoY/pokered-custom-starter.git hack
           python3 build/patch_battlehub.py hack
           sed -i 's/wIndigoPlateauLobbyCurScript/wRoute3CurScript/g' hack/scripts/IndigoPlateauLobby.asm
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Keep blackout/defeat recovery inside the one-room hub.
+          p = Path('hack/scripts/IndigoPlateauLobby.asm')
+          s = p.read_text()
+          old = 'IndigoPlateauLobby_Script:\n\tcall EnableAutoTextBoxDrawing'
+          new = 'IndigoPlateauLobby_Script:\n\tld a, INDIGO_PLATEAU_LOBBY\n\tld [wLastBlackoutMap], a\n\tcall EnableAutoTextBoxDrawing'
+          if old not in s:
+              raise SystemExit('hub script insertion point missing')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('hack/engine/overworld/special_warps.asm')
+          s = p.read_text()
+          old = '\tld a, [wLastBlackoutMap]\n\tjr .usedFlyWarp'
+          new = '\tld a, [wLastBlackoutMap]\n\tcp INDIGO_PLATEAU_LOBBY\n\tjr nz, .usedFlyWarp\n\tld hl, FirstMapSpec\n\tjr .copyWarpData'
+          if old not in s:
+              raise SystemExit('special warp insertion point missing')
+          p.write_text(s.replace(old, new, 1))
+          PY
           make -C hack -j$(nproc) blue
           test -f hack/pokeblue.gbc
           test "$(stat -c%s hack/pokeblue.gbc)" = "1048576"
