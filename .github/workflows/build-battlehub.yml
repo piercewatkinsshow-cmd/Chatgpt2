@@ -42,6 +42,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/UnderscorePoY/pokered-custom-starter.git hack
           python3 build/patch_battlehub.py hack
+          sed -i 's/wIndigoPlateauLobbyCurScript/wRoute3CurScript/g' hack/scripts/IndigoPlateauLobby.asm
           make -C hack -j$(nproc) blue
           test -f hack/pokeblue.gbc
           test "$(stat -c%s hack/pokeblue.gbc)" = "1048576"
