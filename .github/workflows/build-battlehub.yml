@@ -15,15 +15,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout build helpers
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential git make gcc pkg-config flex bison libpng-dev
 
-      - name: Build verified vanilla Pokemon Blue
+      - name: Build verified vanilla Blue
         run: |
           git clone --depth=1 https://github.com/pret/pokered.git vanilla
           git clone --depth=1 --branch v1.0.3 https://github.com/gbdev/rgbds.git rgbds-new
@@ -31,72 +30,53 @@ jobs:
           make -C vanilla -j$(nproc) blue
           test "$(sha1sum vanilla/pokeblue.gbc | awk '{print $1}')" = "d7037c83e1ae5b39bde3c30787637ba1d4c48ce2"
 
-      - name: Install RGBDS 0.4.1 for custom-starter base
+      - name: Install RGBDS 0.4.1
         run: |
           git clone --depth=1 --branch v0.4.1 https://github.com/gbdev/rgbds.git rgbds-old
           sudo make -C rgbds-old -j$(nproc) install
 
-      - name: Build Battle Hub plus Mismagius
-        id: hackbuild
-        continue-on-error: true
+      - name: Build Battle Hub with Mismagius
         run: |
-          set -o pipefail
-          mkdir -p diagnostics
-          {
-            git clone --depth=1 https://github.com/UnderscorePoY/pokered-custom-starter.git hack
-            python3 build/patch_battlehub.py hack
-            python3 build/add_mismagius.py hack
-            sed -i 's/wIndigoPlateauLobbyCurScript/wRoute3CurScript/g' hack/scripts/IndigoPlateauLobby.asm
-            python3 - <<'PY'
+          git clone --depth=1 https://github.com/UnderscorePoY/pokered-custom-starter.git hack
+          python3 build/patch_battlehub.py hack
+          set +e
+          python3 build/add_mismagius.py hack
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          python3 build/fix_mismagius_selector.py hack
+          sed -i 's/wIndigoPlateauLobbyCurScript/wRoute3CurScript/g' hack/scripts/IndigoPlateauLobby.asm
+          python3 - <<'PY'
           from pathlib import Path
-          p = Path('hack/scripts/IndigoPlateauLobby.asm')
-          s = p.read_text()
-          old = 'IndigoPlateauLobby_Script:\n\tcall EnableAutoTextBoxDrawing'
-          new = 'IndigoPlateauLobby_Script:\n\tld a, INDIGO_PLATEAU_LOBBY\n\tld [wLastBlackoutMap], a\n\tcall EnableAutoTextBoxDrawing'
+          p=Path('hack/scripts/IndigoPlateauLobby.asm'); s=p.read_text()
+          old='IndigoPlateauLobby_Script:\n\tcall EnableAutoTextBoxDrawing'
+          new='IndigoPlateauLobby_Script:\n\tld a, INDIGO_PLATEAU_LOBBY\n\tld [wLastBlackoutMap], a\n\tcall EnableAutoTextBoxDrawing'
           if old not in s: raise SystemExit('hub script insertion point missing')
-          p.write_text(s.replace(old, new, 1))
-          p = Path('hack/engine/overworld/special_warps.asm')
-          s = p.read_text()
-          old = '\tld a, [wLastBlackoutMap]\n\tjr .usedFlyWarp'
-          new = '\tld a, [wLastBlackoutMap]\n\tcp INDIGO_PLATEAU_LOBBY\n\tjr nz, .usedFlyWarp\n\tld hl, FirstMapSpec\n\tjr .copyWarpData'
+          p.write_text(s.replace(old,new,1))
+          p=Path('hack/engine/overworld/special_warps.asm'); s=p.read_text()
+          old='\tld a, [wLastBlackoutMap]\n\tjr .usedFlyWarp'
+          new='\tld a, [wLastBlackoutMap]\n\tcp INDIGO_PLATEAU_LOBBY\n\tjr nz, .usedFlyWarp\n\tld hl, FirstMapSpec\n\tjr .copyWarpData'
           if old not in s: raise SystemExit('special warp insertion point missing')
-          p.write_text(s.replace(old, new, 1))
+          p.write_text(s.replace(old,new,1))
           PY
-            make -C hack -j$(nproc) blue
-            test -f hack/pokeblue.gbc
-            test "$(stat -c%s hack/pokeblue.gbc)" = "1048576"
-          } 2>&1 | tee diagnostics/build.log
+          make -C hack -j$(nproc) blue
+          test -f hack/pokeblue.gbc
+          test "$(stat -c%s hack/pokeblue.gbc)" = "1048576"
 
-      - name: Upload diagnostic log
-        if: steps.hackbuild.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mismagius-Build-Diagnostics
-          path: diagnostics/build.log
-
-      - name: Fail after diagnostics
-        if: steps.hackbuild.outcome == 'failure'
-        run: exit 1
-
-      - name: Generate IPS patch and checksums
+      - name: Generate patch
         run: |
           mkdir -p output
           python3 - <<'PY'
           from pathlib import Path
-          src = Path('vanilla/pokeblue.gbc').read_bytes()
-          dst = Path('hack/pokeblue.gbc').read_bytes()
-          assert len(src) == len(dst) == 1048576
-          out = bytearray(b'PATCH')
-          i = 0
-          while i < len(src):
-              if src[i] == dst[i]:
-                  i += 1
-                  continue
-              start = i
-              chunk = bytearray()
-              while i < len(src) and src[i] != dst[i] and len(chunk) < 65535:
-                  chunk.append(dst[i]); i += 1
-              out += start.to_bytes(3, 'big') + len(chunk).to_bytes(2, 'big') + chunk
+          src=Path('vanilla/pokeblue.gbc').read_bytes(); dst=Path('hack/pokeblue.gbc').read_bytes()
+          assert len(src)==len(dst)==1048576
+          out=bytearray(b'PATCH'); i=0
+          while i<len(src):
+              if src[i]==dst[i]: i+=1; continue
+              start=i; chunk=bytearray()
+              while i<len(src) and src[i]!=dst[i] and len(chunk)<65535:
+                  chunk.append(dst[i]); i+=1
+              out += start.to_bytes(3,'big') + len(chunk).to_bytes(2,'big') + chunk
           out += b'EOF'
           Path('output/PokemonBlue_BattleHub_Mismagius.ips').write_bytes(out)
           PY
@@ -106,10 +86,9 @@ jobs:
             echo "target_sha1=$(sha1sum hack/pokeblue.gbc | awk '{print $1}')"
             echo "target_sha256=$(sha256sum hack/pokeblue.gbc | awk '{print $1}')"
             echo "target_size=$(stat -c%s hack/pokeblue.gbc)"
-            echo "patch_sha256=$(sha256sum output/PokemonBlue_BattleHub_Mismagius.ips | awk '{print $1}')"
           } > output/build-info-mismagius.txt
 
-      - name: Upload patch artifact
+      - name: Upload patch
         uses: actions/upload-artifact@v4
         with:
           name: PokemonBlue-BattleHub-Mismagius-Patch
@@ -117,7 +96,7 @@ jobs:
             output/PokemonBlue_BattleHub_Mismagius.ips
             output/build-info-mismagius.txt
 
-      - name: Publish base64 patch for retrieval
+      - name: Publish patch text
         run: |
           git config user.name "Battle Hub Builder"
           git config user.email "actions@users.noreply.github.com"
