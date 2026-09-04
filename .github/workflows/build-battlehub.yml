@@ -1,0 +1,50 @@
+name: Build Pokemon Blue Battle Hub
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout patch repo
+        uses: actions/checkout@v4
+
+      - name: Checkout RGBDS
+        uses: actions/checkout@v4
+        with:
+          repository: gbdev/rgbds
+          ref: v1.0.3
+          path: rgbds
+
+      - name: Install RGBDS
+        working-directory: rgbds
+        run: |
+          sudo apt-get update
+          sudo apt-get install -yq bison libpng-dev pkg-config
+          sudo make -j$(nproc) install
+
+      - name: Clone pokered
+        run: git clone --depth 1 https://github.com/pret/pokered.git pokered
+
+      - name: Apply Battle Hub patch
+        run: python3 battlehub_patch.py pokered
+
+      - name: Build Pokemon Blue
+        working-directory: pokered
+        run: make blue -j$(nproc)
+
+      - name: Verify output
+        run: |
+          test -f pokered/pokeblue.gbc
+          sha1sum pokered/pokeblue.gbc
+          ls -lh pokered/pokeblue.gbc
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokemonBlue-BattleHub
+          path: pokered/pokeblue.gbc
+          if-no-files-found: error
