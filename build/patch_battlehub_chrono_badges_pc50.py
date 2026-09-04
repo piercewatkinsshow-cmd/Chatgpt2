@@ -9,17 +9,41 @@ subprocess.run([sys.executable, str(base), str(root)], check=True)
 # ---------------------------------------------------------------------------
 # PC STOCK: ALL NORMALLY PURCHASABLE TMs x50
 # ---------------------------------------------------------------------------
-# In Pokemon Blue, Celadon Mart 2F sells these nine TMs. Keep all other
-# non-gym TMs at quantity 1, but make every purchasable TM a stack of 50.
+# Pokemon Blue's Celadon Dept. Store 2F sells nine TMs:
+# TM01, TM02, TM05, TM07, TM09, TM17, TM32, TM33 and TM37.
+# TM01 was previously in the starting Bag; move it into the PC so all nine
+# purchasable TMs are together there at quantity 50.
 p = root / "engine/movie/oak_speech/oak_speech.asm"
 s = p.read_text()
+
+old = "BattleHubBagItems:\n\tdb 12\n"
+new = "BattleHubBagItems:\n\tdb 11\n"
+if old not in s:
+    raise SystemExit("BattleHub bag count not found")
+s = s.replace(old, new, 1)
+
+old = "\tdb TM_FLASH, 1\n\tdb TM_MEGA_PUNCH, 1\n\tdb $ff\nBattleHubBagItemsEnd:"
+# The HM constant is HM_FLASH, not TM_FLASH; handle the actual source below.
+if old in s:
+    s = s.replace(old, "\tdb TM_FLASH, 1\n\tdb $ff\nBattleHubBagItemsEnd:", 1)
+else:
+    old = "\tdb HM_FLASH, 1\n\tdb TM_MEGA_PUNCH, 1\n\tdb $ff\nBattleHubBagItemsEnd:"
+    if old not in s:
+        raise SystemExit("TM01 bag entry not found")
+    s = s.replace(old, "\tdb HM_FLASH, 1\n\tdb $ff\nBattleHubBagItemsEnd:", 1)
+
+old = "BattleHubPCItems:\n\tdb 41\n"
+new = "BattleHubPCItems:\n\tdb 42\n\tdb TM_MEGA_PUNCH, 50\n"
+if old not in s:
+    raise SystemExit("BattleHub PC count not found")
+s = s.replace(old, new, 1)
+
 for tm in [
     "TM_DOUBLE_TEAM",
     "TM_REFLECT",
     "TM_RAZOR_WIND",
     "TM_HORN_DRILL",
     "TM_EGG_BOMB",
-    "TM_MEGA_PUNCH",
     "TM_MEGA_KICK",
     "TM_TAKE_DOWN",
     "TM_SUBMISSION",
@@ -34,17 +58,13 @@ p.write_text(s)
 # ---------------------------------------------------------------------------
 # RELIABLE ONE-TIME TRAINERS + DIRECT GYM REWARDS
 # ---------------------------------------------------------------------------
-# The prior hub used the generic EndTrainerBattle script while the map's base
-# trainer-header pointer was always header 0. That makes the defeated-event
-# bookkeeping fragile on a custom map containing unrelated event flags.
+# Re-select the exact trainer header after each battle so EndTrainerBattle sets
+# the correct defeated-event flag. That flag makes all 13 opponents permanently
+# non-battleable after a victory.
 #
-# This handler identifies the opponent class, restores the exact trainer header
-# for that opponent, then calls EndTrainerBattle. That makes its normal defeated
-# flag permanent, so every trainer can only be fought once.
-#
-# After a win, each Gym Leader immediately sets its badge and gives its original
-# TM reward in the same post-battle handler. No polling of beat-event flags is
-# needed anymore.
+# Gym badges and their original TM rewards are awarded immediately from this
+# same post-battle handler, based on the actual opponent class. This avoids the
+# old polling routine that could miss/mis-associate rewards on the custom map.
 p = root / "scripts/IndigoPlateauLobby.asm"
 s = p.read_text()
 
@@ -63,68 +83,67 @@ if insert_at < 0:
     raise SystemExit("text pointer insertion point not found")
 
 handler = r'''BattleHubEndTrainerBattle:
-	; Re-select the exact trainer header from the opponent class. This ensures
-	; EndTrainerBattle sets the correct one-time defeated event.
+	; Select the exact trainer header from the opponent class.
 	ld a, [wEnemyMonOrTrainerClass]
 	cp OPP_BROCK
-	jr z, .brockHeader
+	jp z, .brockHeader
 	cp OPP_MISTY
-	jr z, .mistyHeader
+	jp z, .mistyHeader
 	cp OPP_LT_SURGE
-	jr z, .surgeHeader
+	jp z, .surgeHeader
 	cp OPP_ERIKA
-	jr z, .erikaHeader
+	jp z, .erikaHeader
 	cp OPP_KOGA
-	jr z, .kogaHeader
+	jp z, .kogaHeader
 	cp OPP_SABRINA
-	jr z, .sabrinaHeader
+	jp z, .sabrinaHeader
 	cp OPP_BLAINE
-	jr z, .blaineHeader
+	jp z, .blaineHeader
 	cp OPP_GIOVANNI
-	jr z, .giovanniHeader
+	jp z, .giovanniHeader
 	cp OPP_LORELEI
-	jr z, .loreleiHeader
+	jp z, .loreleiHeader
 	cp OPP_BRUNO
-	jr z, .brunoHeader
+	jp z, .brunoHeader
 	cp OPP_AGATHA
-	jr z, .agathaHeader
+	jp z, .agathaHeader
 	cp OPP_LANCE
-	jr z, .lanceHeader
+	jp z, .lanceHeader
 	ld hl, BattleHubTrainerHeader12
-	jr .haveHeader
+	jp .haveHeader
 .brockHeader
 	ld hl, BattleHubTrainerHeader0
-	jr .haveHeader
+	jp .haveHeader
 .mistyHeader
 	ld hl, BattleHubTrainerHeader1
-	jr .haveHeader
+	jp .haveHeader
 .surgeHeader
 	ld hl, BattleHubTrainerHeader2
-	jr .haveHeader
+	jp .haveHeader
 .erikaHeader
 	ld hl, BattleHubTrainerHeader3
-	jr .haveHeader
+	jp .haveHeader
 .kogaHeader
 	ld hl, BattleHubTrainerHeader4
-	jr .haveHeader
+	jp .haveHeader
 .sabrinaHeader
 	ld hl, BattleHubTrainerHeader5
-	jr .haveHeader
+	jp .haveHeader
 .blaineHeader
 	ld hl, BattleHubTrainerHeader6
-	jr .haveHeader
+	jp .haveHeader
 .giovanniHeader
 	ld hl, BattleHubTrainerHeader7
-	jr .haveHeader
+	jp .haveHeader
 .loreleiHeader
 	ld hl, BattleHubTrainerHeader8
-	jr .haveHeader
+	jp .haveHeader
 .brunoHeader
 	ld hl, BattleHubTrainerHeader9
-	jr .haveHeader
+	jp .haveHeader
 .agathaHeader
 	ld hl, BattleHubTrainerHeader10
-	jr .haveHeader
+	jp .haveHeader
 .lanceHeader
 	ld hl, BattleHubTrainerHeader11
 .haveHeader
@@ -139,21 +158,21 @@ handler = r'''BattleHubEndTrainerBattle:
 	; Award gym rewards immediately from the actual opponent class.
 	ld a, [wEnemyMonOrTrainerClass]
 	cp OPP_BROCK
-	jr z, .awardBrock
+	jp z, .awardBrock
 	cp OPP_MISTY
-	jr z, .awardMisty
+	jp z, .awardMisty
 	cp OPP_LT_SURGE
-	jr z, .awardSurge
+	jp z, .awardSurge
 	cp OPP_ERIKA
-	jr z, .awardErika
+	jp z, .awardErika
 	cp OPP_KOGA
-	jr z, .awardKoga
+	jp z, .awardKoga
 	cp OPP_SABRINA
-	jr z, .awardSabrina
+	jp z, .awardSabrina
 	cp OPP_BLAINE
-	jr z, .awardBlaine
+	jp z, .awardBlaine
 	cp OPP_GIOVANNI
-	jr z, .awardGiovanni
+	jp z, .awardGiovanni
 	ret ; Elite Four / Champion: defeated flag only
 
 .awardBrock
@@ -261,4 +280,4 @@ p.write_text(s)
 print("Applied direct one-time Battle Hub rewards")
 print("All 13 trainers: one battle after a win")
 print("Gym badges/TMs: awarded immediately in post-battle handler")
-print("Purchasable Celadon Mart TMs in PC: quantity 50 each")
+print("All nine Celadon purchasable TMs are in the PC at quantity 50")
