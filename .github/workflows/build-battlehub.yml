@@ -37,32 +37,46 @@ jobs:
           sudo make -C rgbds-old -j$(nproc) install
 
       - name: Build Battle Hub plus Mismagius
+        id: hackbuild
+        continue-on-error: true
         run: |
-          git clone --depth=1 https://github.com/UnderscorePoY/pokered-custom-starter.git hack
-          python3 build/patch_battlehub.py hack
-          python3 build/add_mismagius.py hack
-          sed -i 's/wIndigoPlateauLobbyCurScript/wRoute3CurScript/g' hack/scripts/IndigoPlateauLobby.asm
-          python3 - <<'PY'
+          set -o pipefail
+          mkdir -p diagnostics
+          {
+            git clone --depth=1 https://github.com/UnderscorePoY/pokered-custom-starter.git hack
+            python3 build/patch_battlehub.py hack
+            python3 build/add_mismagius.py hack
+            sed -i 's/wIndigoPlateauLobbyCurScript/wRoute3CurScript/g' hack/scripts/IndigoPlateauLobby.asm
+            python3 - <<'PY'
           from pathlib import Path
           p = Path('hack/scripts/IndigoPlateauLobby.asm')
           s = p.read_text()
           old = 'IndigoPlateauLobby_Script:\n\tcall EnableAutoTextBoxDrawing'
           new = 'IndigoPlateauLobby_Script:\n\tld a, INDIGO_PLATEAU_LOBBY\n\tld [wLastBlackoutMap], a\n\tcall EnableAutoTextBoxDrawing'
-          if old not in s:
-              raise SystemExit('hub script insertion point missing')
+          if old not in s: raise SystemExit('hub script insertion point missing')
           p.write_text(s.replace(old, new, 1))
-
           p = Path('hack/engine/overworld/special_warps.asm')
           s = p.read_text()
           old = '\tld a, [wLastBlackoutMap]\n\tjr .usedFlyWarp'
           new = '\tld a, [wLastBlackoutMap]\n\tcp INDIGO_PLATEAU_LOBBY\n\tjr nz, .usedFlyWarp\n\tld hl, FirstMapSpec\n\tjr .copyWarpData'
-          if old not in s:
-              raise SystemExit('special warp insertion point missing')
+          if old not in s: raise SystemExit('special warp insertion point missing')
           p.write_text(s.replace(old, new, 1))
           PY
-          make -C hack -j$(nproc) blue
-          test -f hack/pokeblue.gbc
-          test "$(stat -c%s hack/pokeblue.gbc)" = "1048576"
+            make -C hack -j$(nproc) blue
+            test -f hack/pokeblue.gbc
+            test "$(stat -c%s hack/pokeblue.gbc)" = "1048576"
+          } 2>&1 | tee diagnostics/build.log
+
+      - name: Upload diagnostic log
+        if: steps.hackbuild.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mismagius-Build-Diagnostics
+          path: diagnostics/build.log
+
+      - name: Fail after diagnostics
+        if: steps.hackbuild.outcome == 'failure'
+        run: exit 1
 
       - name: Generate IPS patch and checksums
         run: |
@@ -74,19 +88,15 @@ jobs:
           assert len(src) == len(dst) == 1048576
           out = bytearray(b'PATCH')
           i = 0
-          n = len(src)
-          while i < n:
+          while i < len(src):
               if src[i] == dst[i]:
                   i += 1
                   continue
               start = i
               chunk = bytearray()
-              while i < n and src[i] != dst[i] and len(chunk) < 65535:
-                  chunk.append(dst[i])
-                  i += 1
-              out += start.to_bytes(3, 'big')
-              out += len(chunk).to_bytes(2, 'big')
-              out += chunk
+              while i < len(src) and src[i] != dst[i] and len(chunk) < 65535:
+                  chunk.append(dst[i]); i += 1
+              out += start.to_bytes(3, 'big') + len(chunk).to_bytes(2, 'big') + chunk
           out += b'EOF'
           Path('output/PokemonBlue_BattleHub_Mismagius.ips').write_bytes(out)
           PY
@@ -98,7 +108,6 @@ jobs:
             echo "target_size=$(stat -c%s hack/pokeblue.gbc)"
             echo "patch_sha256=$(sha256sum output/PokemonBlue_BattleHub_Mismagius.ips | awk '{print $1}')"
           } > output/build-info-mismagius.txt
-          cat output/build-info-mismagius.txt
 
       - name: Upload patch artifact
         uses: actions/upload-artifact@v4
