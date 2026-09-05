@@ -22,54 +22,54 @@ p=root/'custom_starter/custom_starter_menu.asm';s=p.read_text()
 s=s.replace('db "STARTER SPECIES@"','db "POKEMON SPECIES@"',1)
 s=s.replace('db "(ENC. PRESS SEL.)@"','db "START=TAKE B=BACK@"',1)
 
-catalog=r'''\n\nBattleHubPokemonCatalog::
-\t; Reuse the stable alphabetical 151-species selector already present in
-\t; this fork. START confirms; B/A/SELECT return without taking a Pokemon.
-\tcall ClearScreen
-\tcall LoadTextBoxTilePatterns
-\tld a, $f
-\tld hl, wCustomStarterAtkDV
-\tld [hli], a
-\tld [hli], a
-\tld [hli], a
-\tld [hl], a
-\tcall DisplayStarterMenu
-\tldh a, [hJoy5]
-\tbit BIT_START, a
-\tret z
+catalog='\n\n'+r'''BattleHubPokemonCatalog::
+	; Reuse the stable alphabetical 151-species selector already present in
+	; this fork. START confirms; B/A/SELECT return without taking a Pokemon.
+	call ClearScreen
+	call LoadTextBoxTilePatterns
+	ld a, $f
+	ld hl, wCustomStarterAtkDV
+	ld [hli], a
+	ld [hli], a
+	ld [hli], a
+	ld [hl], a
+	call DisplayStarterMenu
+	ldh a, [hJoy5]
+	bit BIT_START, a
+	ret z
 
-\t; Force the catalog selection to level 5.
-\tld a, [wCustomStarterInternalID]
-\tld b, a
-\tld c, 5
-\tcall GivePokemon
-\tjr nc, .done
+	; Force the catalog selection to level 5.
+	ld a, [wCustomStarterInternalID]
+	ld b, a
+	ld c, 5
+	call GivePokemon
+	jr nc, .done
 
-\t; Give every catalog Pokemon perfect Gen I DVs (15/15/15/15).
-\tld a, [wAddedToParty]
-\tand a
-\tjr z, .boxMon
+	; Give every catalog Pokemon perfect Gen I DVs (15/15/15/15).
+	ld a, [wAddedToParty]
+	and a
+	jr z, .boxMon
 .partyMon
-\tld a, [wPartyCount]
-\tdec a
-\tld hl, wPartyMon1DVs
-\tld bc, PARTYMON_STRUCT_LENGTH
-\tcall AddNTimes
-\tld a, $ff
-\tld [hli], a
-\tld [hl], a
-\tjr .done
+	ld a, [wPartyCount]
+	dec a
+	ld hl, wPartyMon1DVs
+	ld bc, PARTYMON_STRUCT_LENGTH
+	call AddNTimes
+	ld a, $ff
+	ld [hli], a
+	ld [hl], a
+	jr .done
 .boxMon
-\tld a, [wBoxCount]
-\tdec a
-\tld hl, wBoxMon1DVs
-\tld bc, BOXMON_STRUCT_LENGTH
-\tcall AddNTimes
-\tld a, $ff
-\tld [hli], a
-\tld [hl], a
+	ld a, [wBoxCount]
+	dec a
+	ld hl, wBoxMon1DVs
+	ld bc, BOXMON_STRUCT_LENGTH
+	call AddNTimes
+	ld a, $ff
+	ld [hli], a
+	ld [hl], a
 .done
-\tret
+	ret
 '''
 s += catalog
 p.write_text(s)
