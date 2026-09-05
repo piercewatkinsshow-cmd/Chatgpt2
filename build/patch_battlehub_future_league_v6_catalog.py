@@ -53,17 +53,17 @@ catalog='\n\n'+r'''BattleHubPokemonCatalog::
 	ld a, [wPartyCount]
 	dec a
 	ld hl, wPartyMon1DVs
-	ld bc, PARTYMON_STRUCT_LENGTH
+	ld bc, 44 ; party_struct = 33-byte box_struct + 11 party-only bytes
 	call AddNTimes
 	ld a, $ff
 	ld [hli], a
 	ld [hl], a
 	jr .done
 .boxMon
-	ld a, [wBoxCount]
+	ld a, [wNumInBox]
 	dec a
 	ld hl, wBoxMon1DVs
-	ld bc, BOXMON_STRUCT_LENGTH
+	ld bc, 33 ; BOX_STRUCT_LENGTH = 25 + NUM_MOVES*2 = 33
 	call AddNTimes
 	ld a, $ff
 	ld [hli], a
