@@ -95,7 +95,7 @@ replace("engine/events/give_pokemon.asm",
         "\tpop af\n\tld [wd11e], a\n\tcall GetMonName",
         "\tpop af\n.skipDexFlag\n\tld [wd11e], a\n\tcall GetMonName")
 
-old = r'''\tld a, [wcf91]
+old = '''\tld a, [wcf91]
 \tld [wd11e], a
 \tpush de
 \tpredef IndexToPokedex
@@ -118,7 +118,7 @@ old = r'''\tld a, [wcf91]
 \tld hl, wPokedexSeen
 \tcall FlagAction
 '''
-new = r'''\tld a, [wcf91]
+new = '''\tld a, [wcf91]
 \tcp PORYGON_Z
 \tjr z, .skipPlayerDexFlags
 \tld [wd11e], a
