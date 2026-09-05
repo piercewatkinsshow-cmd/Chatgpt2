@@ -1,0 +1,47 @@
+name: Build Future League Final
+on: [workflow_dispatch, push]
+permissions: {contents: read}
+jobs:
+ build:
+  runs-on: ubuntu-latest
+  steps:
+   - uses: actions/checkout@v4
+   - run: sudo apt-get update && sudo apt-get install -y build-essential git make gcc pkg-config flex bison libpng-dev
+   - name: Build ROM
+     run: |
+      git clone --depth=1 https://github.com/pret/pokered.git vanilla
+      git clone --depth=1 --branch v1.0.3 https://github.com/gbdev/rgbds.git rgbds-new
+      sudo make -C rgbds-new -j$(nproc) install
+      make -C vanilla -j$(nproc) blue
+      test "$(sha1sum vanilla/pokeblue.gbc|awk '{print $1}')" = d7037c83e1ae5b39bde3c30787637ba1d4c48ce2
+      git clone --depth=1 --branch v0.4.1 https://github.com/gbdev/rgbds.git rgbds-old
+      sudo make -C rgbds-old -j$(nproc) install
+      git clone --depth=1 https://github.com/UnderscorePoY/pokered-custom-starter.git hack
+      python3 build/patch_battlehub_future_league_v3.py hack
+      sed -i 's/wIndigoPlateauLobbyCurScript/wRoute3CurScript/g' hack/scripts/IndigoPlateauLobby.asm
+      python3 - <<'PY'
+      from pathlib import Path
+      p=Path('hack/scripts/IndigoPlateauLobby.asm');s=p.read_text();s=s.replace('IndigoPlateauLobby_Script:\n\tcall EnableAutoTextBoxDrawing','IndigoPlateauLobby_Script:\n\tld a, INDIGO_PLATEAU_LOBBY\n\tld [wLastBlackoutMap], a\n\tcall EnableAutoTextBoxDrawing',1);p.write_text(s)
+      p=Path('hack/engine/overworld/special_warps.asm');s=p.read_text();s=s.replace('\tld a, [wLastBlackoutMap]\n\tjr .usedFlyWarp','\tld a, [wLastBlackoutMap]\n\tcp INDIGO_PLATEAU_LOBBY\n\tjr nz, .usedFlyWarp\n\tld hl, FirstMapSpec\n\tjr .copyWarpData',1);p.write_text(s)
+      PY
+      make -C hack -j$(nproc) blue
+      test "$(stat -c%s hack/pokeblue.gbc)" = 1048576
+   - name: Package
+     run: |
+      mkdir -p output
+      python3 - <<'PY'
+      from pathlib import Path
+      a=Path('vanilla/pokeblue.gbc').read_bytes();b=Path('hack/pokeblue.gbc').read_bytes();o=bytearray(b'PATCH');i=0
+      while i<len(a):
+       if a[i]==b[i]:i+=1;continue
+       st=i;c=bytearray()
+       while i<len(a) and a[i]!=b[i] and len(c)<65535:c.append(b[i]);i+=1
+       o+=st.to_bytes(3,'big')+len(c).to_bytes(2,'big')+c
+      Path('output/FutureLeague.ips').write_bytes(o+b'EOF')
+      PY
+      echo source_sha1=d7037c83e1ae5b39bde3c30787637ba1d4c48ce2 > output/build-info.txt
+      echo target_sha1=$(sha1sum hack/pokeblue.gbc|awk '{print $1}') >> output/build-info.txt
+      echo target_sha256=$(sha256sum hack/pokeblue.gbc|awk '{print $1}') >> output/build-info.txt
+      echo target_size=$(stat -c%s hack/pokeblue.gbc) >> output/build-info.txt
+   - uses: actions/upload-artifact@v4
+     with: {name: PokemonBlue-FutureLeague-Final-Patch, path: output/}
