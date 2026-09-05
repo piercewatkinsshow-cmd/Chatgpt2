@@ -48,6 +48,13 @@ jobs:
           curl -L https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/pokemon/smeargle/front.png -o hack/gfx/pokemon/front/smeargle.png
           curl -L https://raw.githubusercontent.com/pret/pokecrystal/master/gfx/pokemon/smeargle/back.png -o hack/gfx/pokemon/back/smeargleb.png
 
+          # This older Gen-I compressor allocates only 0x310 bytes for temporary
+          # output. Smeargle's detailed 7x7 sprite can slightly exceed that while
+          # evaluating compression modes, causing a tool-only buffer overflow.
+          # Enlarging the build tool's scratch buffer does not change the ROM
+          # decompression format.
+          sed -i 's/calloc(0x310, 1)/calloc(0x2000, 1)/g' hack/tools/pkmncompress.c
+
           python3 build/add_smeargle.py hack
 
           # Reuse a spare current-script byte for this custom map.
